@@ -1,0 +1,75 @@
+name: Deploy to Vercel
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+    branches:
+      - main
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v3
+      
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+      
+      - name: 🐍 Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: 📦 Install Python dependencies
+        run: |
+          pip install -r requirements.txt
+      
+      - name: 📦 Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+      
+      - name: 🧪 Run tests (if you have them)
+        run: |
+          echo "No tests configured yet"
+          # cd frontend && npm test
+      
+      - name: 🏗️ Build frontend
+        run: |
+          cd frontend
+          npm run build
+        env:
+          CI: false  # Ignore warnings as errors
+      
+      - name: 🚀 Deploy to Vercel
+        uses: amondnet/vercel-action@v25
+        with:
+          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
+          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+          vercel-args: '--prod'
+          working-directory: ./
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+      
+      - name: 📝 Comment deployment URL
+        uses: actions/github-script@v6
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🚀 Preview deployment ready! Check Vercel dashboard for URL.'
+            })
