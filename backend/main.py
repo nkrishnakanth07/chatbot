@@ -14,7 +14,7 @@ from pypdf import PdfReader
 
 # Use Pinecone for vector storage
 from pinecone import Pinecone, ServerlessSpec
-from langchain_pinecone import PineconeVectorStore
+from langchain.vectorstores import Pinecone as PineconeVectorStore
 
 app = FastAPI(title="Multi-Document RAG Chatbot")
 
@@ -35,7 +35,9 @@ def get_pinecone_index():
     index_name = "chatbot-docs"
     
     # Create index if it doesn't exist
-    if index_name not in pc.list_indexes().names():
+    existing_indexes = [idx.name for idx in pc.list_indexes()]
+    
+    if index_name not in existing_indexes:
         pc.create_index(
             name=index_name,
             dimension=1536,  # OpenAI embedding dimension
@@ -112,7 +114,7 @@ async def upload_document(session_id: str, file: UploadFile = File(...)):
             {
                 "doc_id": doc_id,
                 "filename": file.filename,
-                "chunk_id": i,
+                "chunk_id": str(i),
                 "session_id": session_id
             } 
             for i in range(len(chunks))
@@ -120,15 +122,12 @@ async def upload_document(session_id: str, file: UploadFile = File(...)):
         
         # Store in Pinecone
         index = get_pinecone_index()
-        vectorstore = PineconeVectorStore(
-            index=index,
-            embedding=embeddings,
-            text_key="text"
-        )
-        
-        vectorstore.add_texts(
+        vectorstore = PineconeVectorStore.from_texts(
             texts=chunks,
-            metadatas=metadatas
+            embedding=embeddings,
+            index_name="chatbot-docs",
+            metadatas=metadatas,
+            namespace=session_id
         )
         
         return {
@@ -146,20 +145,16 @@ async def chat(session_id: str, request: ChatRequest):
     """Chat with uploaded documents"""
     
     try:
-        # Get Pinecone vectorstore
-        index = get_pinecone_index()
-        vectorstore = PineconeVectorStore(
-            index=index,
+        # Get Pinecone vectorstore for this session
+        vectorstore = PineconeVectorStore.from_existing_index(
+            index_name="chatbot-docs",
             embedding=embeddings,
-            text_key="text"
+            namespace=session_id
         )
         
-        # Create retriever with session filter
+        # Create retriever
         retriever = vectorstore.as_retriever(
-            search_kwargs={
-                "k": 4,
-                "filter": {"session_id": session_id}
-            }
+            search_kwargs={"k": 4}
         )
         
         # Create QA chain
