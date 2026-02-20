@@ -27,8 +27,9 @@ app.add_middleware(
 # In-memory session storage
 sessions = {}
 
-# Initialize OpenAI (reads OPENAI_API_KEY from environment automatically)
-embeddings = OpenAIEmbeddings()
+def get_embeddings():
+    """Get embeddings instance - lazy initialization"""
+    return OpenAIEmbeddings(model="text-embedding-ada-002")
 
 class ChatRequest(BaseModel):
     session_id: str
@@ -105,6 +106,9 @@ async def upload_document(session_id: str, file: UploadFile = File(...)):
             for i in range(len(chunks))
         ]
         
+        # Get embeddings
+        embeddings = get_embeddings()
+        
         # Create or update vectorstore
         if sessions[session_id]["vectorstore"] is None:
             # Create new vectorstore
@@ -156,7 +160,7 @@ async def chat(session_id: str, request: ChatRequest):
             search_kwargs={"k": 4}
         )
         
-        # Create QA chain (API key read from environment)
+        # Create QA chain
         llm = ChatOpenAI(
             model="gpt-4o-mini",
             temperature=0
