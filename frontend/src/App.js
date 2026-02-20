@@ -11,7 +11,6 @@ function App() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [documents, setDocuments] = useState([]);
-  const [showHistory, setShowHistory] = useState(false);
   const [showDocuments, setShowDocuments] = useState(false);
   const messagesEndRef = useRef(null);
 
