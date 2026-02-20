@@ -10,11 +10,8 @@ import uuid
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
+from langchain.vectorstores import Chroma
 from pypdf import PdfReader
-
-# Use Pinecone for vector storage
-from pinecone import Pinecone, ServerlessSpec
-from langchain.vectorstores import Pinecone as PineconeVectorStore
 
 app = FastAPI(title="Multi-Document RAG Chatbot")
 
@@ -27,28 +24,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Pinecone
-def get_pinecone_index():
-    """Initialize Pinecone index"""
-    pc = Pinecone(api_key=os.getenv("PINECONE_API_KEY"))
-    
-    index_name = "chatbot-docs"
-    
-    # Create index if it doesn't exist
-    existing_indexes = [idx.name for idx in pc.list_indexes()]
-    
-    if index_name not in existing_indexes:
-        pc.create_index(
-            name=index_name,
-            dimension=1536,  # OpenAI embedding dimension
-            metric="cosine",
-            spec=ServerlessSpec(
-                cloud="aws",
-                region=os.getenv("PINECONE_ENVIRONMENT", "us-east-1")
-            )
-        )
-    
-    return pc.Index(index_name)
+# In-memory session storage
+sessions = {}
 
 # Initialize OpenAI
 embeddings = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"))
@@ -74,6 +51,11 @@ async def health():
 async def create_new_session():
     """Create a new chat session"""
     session_id = str(uuid.uuid4())
+    sessions[session_id] = {
+        "documents": [],
+        "vectorstore": None,
+        "chat_history": []
+    }
     return SessionResponse(
         session_id=session_id,
         message="Session created successfully"
@@ -82,6 +64,9 @@ async def create_new_session():
 @app.post("/api/upload/{session_id}")
 async def upload_document(session_id: str, file: UploadFile = File(...)):
     """Upload and process a PDF document"""
+    
+    if session_id not in sessions:
+        raise HTTPException(404, "Session not found")
     
     if not file.filename.endswith('.pdf'):
         raise HTTPException(400, "Only PDF files supported")
@@ -120,15 +105,27 @@ async def upload_document(session_id: str, file: UploadFile = File(...)):
             for i in range(len(chunks))
         ]
         
-        # Store in Pinecone
-        index = get_pinecone_index()
-        vectorstore = PineconeVectorStore.from_texts(
-            texts=chunks,
-            embedding=embeddings,
-            index_name="chatbot-docs",
-            metadatas=metadatas,
-            namespace=session_id
-        )
+        # Create or update vectorstore
+        if sessions[session_id]["vectorstore"] is None:
+            # Create new vectorstore
+            vectorstore = Chroma.from_texts(
+                texts=chunks,
+                embedding=embeddings,
+                metadatas=metadatas
+            )
+            sessions[session_id]["vectorstore"] = vectorstore
+        else:
+            # Add to existing vectorstore
+            sessions[session_id]["vectorstore"].add_texts(
+                texts=chunks,
+                metadatas=metadatas
+            )
+        
+        sessions[session_id]["documents"].append({
+            "doc_id": doc_id,
+            "filename": file.filename,
+            "chunks": len(chunks)
+        })
         
         return {
             "message": f"Document '{file.filename}' uploaded and processed",
@@ -144,13 +141,15 @@ async def upload_document(session_id: str, file: UploadFile = File(...)):
 async def chat(session_id: str, request: ChatRequest):
     """Chat with uploaded documents"""
     
+    if session_id not in sessions:
+        raise HTTPException(404, "Session not found")
+    
+    if sessions[session_id]["vectorstore"] is None:
+        raise HTTPException(400, "No documents uploaded yet")
+    
     try:
-        # Get Pinecone vectorstore for this session
-        vectorstore = PineconeVectorStore.from_existing_index(
-            index_name="chatbot-docs",
-            embedding=embeddings,
-            namespace=session_id
-        )
+        # Get vectorstore for this session
+        vectorstore = sessions[session_id]["vectorstore"]
         
         # Create retriever
         retriever = vectorstore.as_retriever(
