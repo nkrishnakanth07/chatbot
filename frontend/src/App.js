@@ -3,7 +3,7 @@ import axios from 'axios';
 import './App.css';
 
 // Use relative URLs for Vercel deployment, fallback to localhost for development
-const API_URL = process.env.NODE_ENV === 'production' ? '' : (process.env.REACT_APP_API_URL || 'http://localhost:8000');
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 function App() {
   const [sessionId, setSessionId] = useState(null);
