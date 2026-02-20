@@ -19,9 +19,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-
 # In-memory session storage
 sessions = {}
 
@@ -143,6 +140,9 @@ async def chat(session_id: str, request: ChatRequest):
         raise HTTPException(400, "No documents uploaded yet")
     
     try:
+        # Initialize OpenAI client here (lazy initialization to avoid startup errors)
+        client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+        
         # Get all document chunks
         all_chunks = sessions[session_id]["chunks"]
         
