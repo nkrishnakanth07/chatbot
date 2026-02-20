@@ -10,7 +10,7 @@ import uuid
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain.chains import ConversationalRetrievalChain
-from langchain.vectorstores import Chroma
+from langchain_community.vectorstores import Chroma
 from pypdf import PdfReader
 
 app = FastAPI(title="Multi-Document RAG Chatbot")
@@ -27,8 +27,8 @@ app.add_middleware(
 # In-memory session storage
 sessions = {}
 
-# Initialize OpenAI
-embeddings = OpenAIEmbeddings(openai_api_key=os.getenv("OPENAI_API_KEY"))
+# Initialize OpenAI (reads OPENAI_API_KEY from environment automatically)
+embeddings = OpenAIEmbeddings()
 
 class ChatRequest(BaseModel):
     session_id: str
@@ -156,11 +156,10 @@ async def chat(session_id: str, request: ChatRequest):
             search_kwargs={"k": 4}
         )
         
-        # Create QA chain
+        # Create QA chain (API key read from environment)
         llm = ChatOpenAI(
             model="gpt-4o-mini",
-            temperature=0,
-            openai_api_key=os.getenv("OPENAI_API_KEY")
+            temperature=0
         )
         
         qa_chain = ConversationalRetrievalChain.from_llm(
