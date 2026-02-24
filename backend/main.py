@@ -191,7 +191,7 @@ Instructions:
 1. Answer the question based ONLY on the provided document context
 2. If the answer is in the documents, provide a clear, detailed response
 3. If the answer is NOT in the documents, say "I don't see that information in the uploaded documents"
-4. Reference the specific document when answering
+4. Reference the specific page number when answering
 5. Be concise but thorough
 
 Answer:"""
